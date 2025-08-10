@@ -1,12 +1,14 @@
 import { User, Settings, Search, Bell } from 'lucide-react';
 import Link from 'next/link';
-import { SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
+import { SignedIn, SignedOut, UserButton, useUser } from '@clerk/nextjs';
 
 export default function Header() {
+    const { user } = useUser();
+    const firstName = user?.firstName || 'User';
     return (
         <header className="flex justify-between items-center p-4">
             <div>
-                <p className="text-xs text-gray-400">Alex / Dashboard</p>
+                <p className="text-xs text-gray-400">{firstName} / Dashboard</p>
                 <h2 className="text-3xl font-bold text-white">Dashboard</h2>
             </div>
         <div className="flex items-center bg-white/5 backdrop-blur-lg border border-white/10 rounded-full p-2">

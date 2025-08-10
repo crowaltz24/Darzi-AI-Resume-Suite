@@ -18,7 +18,7 @@ import {
   BrainCircuit,
   ListChecks,
 } from "lucide-react";
-import { SignedIn, SignedOut, RedirectToSignIn } from "@clerk/nextjs";
+import { SignedIn, SignedOut, RedirectToSignIn, useUser } from "@clerk/nextjs";
 
 type StatData = {
   resumesCreated: number;
@@ -80,12 +80,12 @@ const StatCard = ({
   </Card>
 );
 
-const WelcomeCard = () => (
+const WelcomeCard = ({ name }: { name: string }) => (
   <Card className="flex flex-col justify-between h-full !p-0 overflow-hidden relative">
     <div className="absolute inset-0 bg-gradient-to-br from-gray-900 to-black opacity-80"></div>
     <div className="p-6 pb-0 z-10">
-      <p className="text-white text-sm">Welcome back,</p>
-      <h3 className="text-white text-2xl font-bold">Alex Thompson</h3>
+      <p className="text-white text-sm">Welcome,</p>
+      <h3 className="text-white text-2xl font-bold">{name}</h3>
       <p className="text-white text-sm mt-1">
         Ready to land your dream job? Let's get started.
       </p>
@@ -312,6 +312,14 @@ export default function App() {
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const { user } = useUser();
+
+  const displayName =
+    user?.firstName && user?.lastName
+      ? `${user.firstName} ${user.lastName}`
+      : user?.username
+      ? user.username
+      : "User";
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -426,7 +434,7 @@ export default function App() {
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
                 <div className="lg:col-span-1">
-                  <WelcomeCard />
+                  <WelcomeCard name={displayName} />
                 </div>
                 <div className="lg:col-span-1">
                   <OverallAtsScoreCard score={stats?.avgAtsScore || 0} />
