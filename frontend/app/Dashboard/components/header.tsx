@@ -3,8 +3,8 @@ import Link from 'next/link';
 import { SignedIn, SignedOut, UserButton, useUser } from '@clerk/nextjs';
 
 export default function Header() {
-    const { user } = useUser();
-    const firstName = user?.firstName || 'User';
+    const { user, isLoaded } = useUser();
+    const firstName = !isLoaded ? 'Loading...' : (user?.firstName || 'User');
     return (
         <header className="flex justify-between items-center p-4">
             <div>

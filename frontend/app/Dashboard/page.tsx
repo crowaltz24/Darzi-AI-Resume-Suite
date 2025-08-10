@@ -312,15 +312,19 @@ export default function App() {
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const { user } = useUser();
+  const { user, isLoaded } = useUser();
 
   const displayName =
-    user?.firstName && user?.lastName
+    isLoaded && user?.firstName && user?.lastName
       ? `${user.firstName} ${user.lastName}`
-      : user?.username
+      : isLoaded && user?.username
       ? user.username
       : "User";
 
+  if (!isLoaded) {
+    // Optionally, you can render a loading spinner or skeleton here
+    return <div>Loading...</div>;
+  }
   useEffect(() => {
     const timer = setTimeout(() => {
       setStats({
