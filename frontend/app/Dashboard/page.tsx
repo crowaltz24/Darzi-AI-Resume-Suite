@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from "react";
 import { Logo } from "@/components/logo";
 import FooterSection from "@/components/footer";
-import Sidebar from "./components/sidebar";
-import Header from "./components/header";
+import Sidebar from "@/components/main/sidebar";
+import Header from "@/components/main/header";
 import { Card } from "./components/card";
 import {
   FileText,
@@ -321,10 +321,6 @@ export default function App() {
       ? user.username
       : "User";
 
-  if (!isLoaded) {
-    // Optionally, you can render a loading spinner or skeleton here
-    return <div>Loading...</div>;
-  }
   useEffect(() => {
     const timer = setTimeout(() => {
       setStats({
@@ -379,7 +375,7 @@ export default function App() {
         },
       ]);
       setLoading(false);
-    }, 1500);
+    }, 0); //increase delay if required
 
     return () => clearTimeout(timer);
   }, []);
@@ -405,7 +401,7 @@ export default function App() {
               sidebarCollapsed ? "ml-20" : "ml-64"
             }`}
           >
-            <Header />
+            <Header pageName="Dashboard" />
             <div className="p-4">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
                 <StatCard

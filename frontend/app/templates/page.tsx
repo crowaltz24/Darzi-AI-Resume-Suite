@@ -1,8 +1,8 @@
 "use client";
 import React, { useState } from "react";
 import Image from "next/image";
-import Sidebar from "../Dashboard/components/sidebar";
-import Header from "../Dashboard/components/header";
+import Sidebar from "@/components/main/sidebar";
+import Header from "@/components/main/header";
 import FooterSection from "@/components/footer";
 import { SignedIn, SignedOut, RedirectToSignIn } from "@clerk/nextjs";
 
@@ -38,7 +38,7 @@ const templatesData: Template[] = [
 ];
 
 const TemplatesTab: React.FC = () => {
-    //eslint-disable-next-line
+  //eslint-disable-next-line
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(
     null
   );
@@ -54,7 +54,7 @@ const TemplatesTab: React.FC = () => {
               sidebarCollapsed ? "ml-20" : "ml-64"
             } min-h-screen`}
           >
-            <Header />
+            <Header pageName="Templates" />
             <div className="p-6">
               {/* Page Header */}
               <div className="mb-6 flex justify-between items-center">
@@ -127,8 +127,8 @@ const TemplatesTab: React.FC = () => {
                   ))}
                 </div>
               ) : (
-                  <p className="text-gray-400">No templates found.</p>
-                )}
+                <p className="text-gray-400">No templates found.</p>
+              )}
             </div>
             <FooterSection />
           </main>
