@@ -24,6 +24,7 @@ There is a clear need for an AI-powered, intuitive, and multilingual resume opti
 
 ### Core Functionality
 - **AI-Powered Resume Builder**: Create professional resumes from scratch using intelligent AI assistance
+- **Resume Parsing API**: Extract structured data from PDF resumes and plain text using hybrid local + AI parsing
 - **ATS Optimization**: Ensure your resume passes Applicant Tracking Systems with tailored formatting and keyword analysis
 - **LinkedIn Integration**: Import your professional profile data directly from LinkedIn
 - **GitHub Project Integration**: Showcase your technical projects and contributions

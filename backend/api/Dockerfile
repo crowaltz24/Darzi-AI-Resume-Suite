@@ -10,6 +10,8 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 COPY . .
 RUN uv pip install -e .
 
+RUN uv pip install pip && python -m spacy download en_core_web_sm
+
 ENV PORT=7860
 EXPOSE $PORT
 
