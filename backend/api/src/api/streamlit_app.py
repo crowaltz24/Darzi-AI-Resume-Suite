@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # Configuration
-API_BASE_URL = "http://localhost:7860"  # Change this to your API URL
+API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:7860")  # Set API base URL via environment variable
 
 def main():
     st.title("📄 Darzi Resume Parser & Text Extractor")
