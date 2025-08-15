@@ -683,7 +683,7 @@ def extract_job_keywords(job_description: str) -> List[str]:
     
     found_keywords.extend(technical_caps[:10])  #limit to 10 additional terms
     
-    return list(set(found_keywords))  #fro removing dubpilcates
+    return list(set(found_keywords))  #for removing duplicates
 
 
 # Text Extraction Endpoints
