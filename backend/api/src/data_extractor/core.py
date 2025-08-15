@@ -135,7 +135,9 @@ def extract_text_vision_api(file_path: str) -> str:
     api_key = os.getenv('GOOGLE_API_KEY')
     if not api_key:
         raise RuntimeError('Missing GOOGLE_API_KEY in environment variables')
-    
+    # Validate Google API key format (should start with "AIza" and be 39 chars)
+    if not (isinstance(api_key, str) and api_key.startswith("AIza") and len(api_key) == 39):
+        raise RuntimeError('GOOGLE_API_KEY appears to be malformed. It should start with "AIza" and be 39 characters long.')
     # Read and encode file
     with open(file_path, 'rb') as f:
         file_content = f.read()
