@@ -667,7 +667,9 @@ if __name__ == "__main__":
     import json
     from datetime import datetime
     
-    BASE_DIR = Path(r"C:\Users\ASUS\OneDrive\Desktop\Darzi-AI-Resume-Suite")
+    import os
+
+    BASE_DIR = Path(os.environ.get("DARZI_BASE_DIR", Path.cwd()))
     PDF_DIR = BASE_DIR / "backend" / "resume-data"
     OUTPUT_DIR = BASE_DIR / "backend" / "parsed-resumes"
 
