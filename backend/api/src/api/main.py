@@ -550,7 +550,6 @@ def analyze_ats_compatibility(resume_data: Dict[str, Any], job_description: str 
         
         #check for quantified achievements
         exp_text = str(experience).lower()
-        if any(indicator in exp_text for indicator in ['%', ' '
         if any(indicator in exp_text for indicator in [
             '%', 'increased', 'decreased', 'improved', 'reduced']):
             score += 10
