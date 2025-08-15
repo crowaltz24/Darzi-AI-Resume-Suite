@@ -18,8 +18,8 @@ from pydantic import BaseModel, AnyHttpUrl
 
 import sys
 import os
-# Add src directory to Python path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add current directory to Python path for imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from utils.parser import ResumeParser
 from data_extractor import extract_text

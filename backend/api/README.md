@@ -228,14 +228,18 @@ The API is configured for Hugging Face Spaces deployment:
 
 ```
 api/
-├── data_extractor/
+├── src/
 │   ├── __init__.py
-│   ├── core.py          # Text extraction logic
-│   └── utils.py         # Helper functions
-├── utils/
-│   ├── __init__.py
-│   └── parser.py        # Resume parsing logic
-├── main.py              # FastAPI application
+│   ├── app.py           # Main FastAPI application (renamed from main.py)
+│   ├── streamlit_app.py # Streamlit UI application
+│   ├── data_extractor/
+│   │   ├── __init__.py
+│   │   ├── core.py      # Text extraction logic
+│   │   └── utils.py     # Helper functions
+│   └── utils/
+│       ├── __init__.py
+│       └── parser.py    # Resume parsing logic
+├── main.py              # Entry point (imports from src/app.py)
 ├── pyproject.toml       # Dependencies
 ├── requirements.txt     # Pip requirements
 ├── Dockerfile          # Docker configuration

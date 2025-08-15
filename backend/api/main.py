@@ -11,9 +11,9 @@ from pathlib import Path
 src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
 
-# Import the FastAPI app from src/api/main.py
-from api.main import app
+# Import the FastAPI app from src/app.py
+from src.app import app
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=7860, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=7860, reload=False)

@@ -37,4 +37,4 @@ EXPOSE $PORT
 HEALTHCHECK CMD python -c "import requests; requests.get(f'http://localhost:{__import__('os').getenv(\"PORT\", \"7860\")}/health' if __import__('os').getenv('APP_MODE') == 'api' else f'http://localhost:{__import__('os').getenv(\"PORT\", \"7860\")}/_stcore/health', timeout=10)" || exit 1
 
 # Run either API or Streamlit UI based on APP_MODE
-CMD ["sh", "-c", "if [ \"$APP_MODE\" = \"ui\" ]; then streamlit run src/api/streamlit_app.py --server.port=${PORT} --server.address=0.0.0.0; else uvicorn main:app --host 0.0.0.0 --port ${PORT}; fi"]
+CMD ["sh", "-c", "if [ \"$APP_MODE\" = \"ui\" ]; then streamlit run src/streamlit_app.py --server.port=${PORT} --server.address=0.0.0.0; else uvicorn main:app --host 0.0.0.0 --port ${PORT}; fi"]
