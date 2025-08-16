@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-FastAPI backend with integrated MCP for resume parsing and text extraction
-Combines local parser with AI-enhanced MCP parsing and Google Vision API text extraction
+Production-ready FastAPI backend for Darzi AI Resume Suite
+Combines local parser with AI-enhanced parsing, ATS analysis, and resume generation
 """
 
 import uvicorn
 import tempfile
 import os
 import json
+import logging
 from typing import Optional, Dict, Any, List, Union
 from fastapi import FastAPI, Request, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +17,13 @@ from contextlib import asynccontextmanager
 from fastmcp import Client
 from pydantic import BaseModel, AnyHttpUrl
 from dotenv import load_dotenv
+
+# Configure logging
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -40,8 +48,8 @@ BASE_DIR = Path(__file__).parent.parent.parent.parent
 MCP_SERVER_PATH = BASE_DIR / "local_mcp" / "server.py"
 MCP_SERVER_URL = f"stdio://python {MCP_SERVER_PATH}"
 
-# File size limits (100MB max per file, 10 files max)
-MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
+# File size limits - Production optimized
+MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE_MB", "10")) * 1024 * 1024  # Default 10MB
 MAX_FILES_COUNT = 10
 
 
@@ -83,59 +91,67 @@ RESUME_SCHEMA = {
 async def lifespan(app: FastAPI):
     global client, enhanced_parser, resume_parser, ats_analyzer
     
-    print("Starting Darzi Resume Parser API...") #starter
+    logger.info("🚀 Starting Darzi AI Resume Suite API...")
     
-    #initialize enhanced parser with LLM support
+    # Initialize enhanced parser with LLM support
     try:
         enhanced_parser = EnhancedResumeParser()
-        print("Enhanced parser initialized")
+        logger.info("✅ Enhanced parser initialized")
         
         # Also initialize local parser for compatibility
         resume_parser = ResumeParser()
-        print("Local parser initialized")
+        logger.info("✅ Local parser initialized")
         
         # Initialize ATS analyzer
         ats_analyzer = ATSScoreAnalyzer()
-        print("ATS analyzer initialized")
+        logger.info("✅ ATS analyzer initialized")
     except Exception as e:
-        print(f"Parser initialization failed: {e}")
+        logger.error(f"❌ Parser initialization failed: {e}")
         enhanced_parser = None
         resume_parser = None
         ats_analyzer = None
     
-    #initialize MCP client
+    # Initialize MCP client (optional, graceful degradation)
     try:
-        client = Client(MCP_SERVER_URL)
-        await client.__aenter__()
-        print("MCP client connected")
-        
-        #test MCP connection
-        tools = await client.list_tools()
-        print(f"Available MCP tools: {[tool['name'] for tool in tools]}")
+        if os.getenv("MCP_ENABLED", "false").lower() == "true":
+            client = Client(MCP_SERVER_URL)
+            await client.__aenter__()
+            logger.info("✅ MCP client connected")
+            
+            # Test MCP connection
+            tools = await client.list_tools()
+            logger.info(f"📋 Available MCP tools: {[tool['name'] for tool in tools]}")
+        else:
+            logger.info("🔧 MCP client disabled via configuration")
+            client = None
         
     except Exception as e:
-        print(f"MCP client connection failed: {e}")
+        logger.warning(f"⚠️  MCP client connection failed (continuing without MCP): {e}")
         client = None
     
+    logger.info("🎉 API startup complete!")
     yield
     
-    #shutdown
-    print("Shutting down...")
+    # Shutdown
+    logger.info("🔄 Shutting down API...")
     if client:
         try:
             await client.__aexit__(None, None, None)
-            print("MCP client disconnected")
+            logger.info("✅ MCP client disconnected")
         except Exception as e:
-            print(f"Error during MCP shutdown: {e}")
+            logger.warning(f"⚠️  Error during MCP shutdown: {e}")
     
-    print("Shutdown complete!")
+    logger.info("✅ Shutdown complete!")
 
 
 app = FastAPI(
-    title="Darzi Resume Parser & ATS Optimizer",
-    description="AI-powered resume parsing with ATS optimization and text extraction",
-    version="2.0.0",
-    lifespan=lifespan
+    title="Darzi AI Resume Suite API",
+    description="🤖 AI-powered resume processing with parsing, ATS analysis, and generation capabilities",
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
 )
 
 # CORS configuration (set API_CORS_ORIGINS to a comma-separated list, or "*" to allow all)
@@ -887,11 +903,71 @@ def get_resume_generation_status():
         )
 
 
-# Text Extraction Endpoints
+# Health and Status Endpoints
+@app.get("/health")
+def health_check():
+    """Comprehensive health check endpoint for monitoring and load balancers."""
+    try:
+        health_status = {
+            "status": "healthy",
+            "version": "1.0.0",
+            "timestamp": str(os.environ.get("TIMESTAMP", "unknown")),
+            "services": {
+                "enhanced_parser": enhanced_parser is not None,
+                "local_parser": resume_parser is not None,
+                "ats_analyzer": ats_analyzer is not None,
+                "mcp_client": client is not None,
+                "google_vision_api": bool(os.getenv("GOOGLE_API_KEY")),
+                "gemini_api": bool(os.getenv("GEMINI_API_KEY"))
+            },
+            "environment": {
+                "app_mode": os.getenv("APP_MODE", "api"),
+                "port": os.getenv("PORT", "7860"),
+                "debug": os.getenv("DEBUG", "false"),
+                "max_file_size_mb": int(os.getenv("MAX_FILE_SIZE_MB", "10"))
+            }
+        }
+        
+        # Check if critical services are available
+        critical_services = ["enhanced_parser", "local_parser", "ats_analyzer"]
+        if not all(health_status["services"][service] for service in critical_services):
+            health_status["status"] = "degraded"
+            logger.warning("⚠️  Some critical services are unavailable")
+        
+        return JSONResponse(content=health_status, status_code=200)
+        
+    except Exception as e:
+        logger.error(f"❌ Health check failed: {e}")
+        return JSONResponse(
+            content={"status": "unhealthy", "error": str(e)},
+            status_code=503
+        )
+
 @app.get("/healthz")
 def healthz():
-    """Health check endpoint for text extraction service."""
-    return {"status": "ok"}
+    """Simple health check endpoint for legacy compatibility."""
+    return {"status": "ok", "service": "darzi-ai-resume-suite"}
+
+@app.get("/status")
+def api_status():
+    """Detailed API status with feature availability."""
+    return {
+        "api_name": "Darzi AI Resume Suite",
+        "version": "1.0.0",
+        "features": {
+            "resume_parsing": {
+                "local": resume_parser is not None,
+                "enhanced": enhanced_parser is not None,
+                "mcp": client is not None
+            },
+            "ats_analysis": ats_analyzer is not None,
+            "resume_generation": True,  # Always available
+            "text_extraction": bool(os.getenv("GOOGLE_API_KEY"))
+        },
+        "llm_providers": {
+            "gemini": bool(os.getenv("GEMINI_API_KEY"))
+        }
+    }
 
 
 @app.post("/api/extract")
