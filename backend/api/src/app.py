@@ -15,15 +15,20 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from fastmcp import Client
 from pydantic import BaseModel, AnyHttpUrl
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 import sys
 import os
 # Add current directory to Python path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from utils.parser import ResumeParser
-from data_extractor import extract_text
-from data_extractor.utils import validate_file_type, format_file_size
+from utils.parser.enhanced import EnhancedResumeParser
+from utils.parser.core import ResumeParser  # Keep for compatibility
+from utils.data_extractor import extract_text
+from utils.data_extractor.utils import validate_file_type, format_file_size
 
 # Configuration
 import os
@@ -44,7 +49,8 @@ class UrlPayload(BaseModel):
 
 # Global variables
 client: Optional[Client] = None
-resume_parser: Optional[ResumeParser] = None
+enhanced_parser: Optional[EnhancedResumeParser] = None
+resume_parser: Optional[ResumeParser] = None  # Keep for compatibility
 
 #standard JSON schema for all parsers
 RESUME_SCHEMA = {
@@ -63,16 +69,21 @@ RESUME_SCHEMA = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global client, resume_parser
+    global client, enhanced_parser, resume_parser
     
     print("Starting Darzi Resume Parser API...") #starter
     
-    #initialize local parser
+    #initialize enhanced parser with LLM support
     try:
+        enhanced_parser = EnhancedResumeParser()
+        print("Enhanced parser initialized")
+        
+        # Also initialize local parser for compatibility
         resume_parser = ResumeParser()
         print("Local parser initialized")
     except Exception as e:
-        print(f"Local parser failed: {e}")
+        print(f"Parser initialization failed: {e}")
+        enhanced_parser = None
         resume_parser = None
     
     #initialize MCP client
@@ -684,6 +695,188 @@ def extract_job_keywords(job_description: str) -> List[str]:
     
     return list(set(found_keywords))  #for removing duplicates
 
+
+# Enhanced Parser Endpoints with LLM Integration
+@app.get("/parser-status")
+def get_parser_status():
+    """Get status of all available parsers (local and LLM)"""
+    if enhanced_parser is None:
+        raise HTTPException(status_code=503, detail="Enhanced parser not initialized")
+    
+    try:
+        status = enhanced_parser.get_parser_status()
+        return {
+            "status": "ok",
+            **status
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get parser status: {str(e)}")
+
+@app.post("/parse-enhanced")
+async def parse_enhanced(
+    file: UploadFile = File(...),
+    use_llm: bool = True,
+    preferred_provider: Optional[str] = None,
+    return_raw: bool = False
+):
+    """
+    Enhanced resume parsing with LLM primary and local fallback
+    
+    Args:
+        file: Resume file to parse
+        use_llm: Whether to try LLM parsing first (default: True)
+        preferred_provider: Preferred LLM provider (optional)
+        return_raw: Return raw parsed data instead of normalized structure
+    """
+    if enhanced_parser is None:
+        raise HTTPException(status_code=503, detail="Enhanced parser not initialized")
+    
+    try:
+        # Validate file
+        validate_file_type(file.filename)
+        
+        # Extract text using temporary file
+        file_content = await file.read()
+        
+        # Create temporary file with appropriate extension
+        file_extension = os.path.splitext(file.filename)[1] if file.filename else '.txt'
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as tmp_file:
+            tmp_file.write(file_content)
+            tmp_path = tmp_file.name
+        
+        try:
+            text = extract_text(tmp_path)
+        finally:
+            # Clean up temporary file
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+        
+        if not text or not text.strip():
+            raise HTTPException(status_code=400, detail="No text could be extracted from the file")
+        
+        # Parse with enhanced parser
+        result = enhanced_parser.parse_resume(
+            text, 
+            use_llm=use_llm, 
+            preferred_provider=preferred_provider,
+            return_raw=return_raw
+        )
+        
+        return {
+            "status": "success",
+            "filename": file.filename,
+            "file_size": format_file_size(len(file_content)),
+            "text_length": len(text),
+            **result
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to parse resume: {str(e)}")
+
+@app.post("/parse-llm-only")
+async def parse_llm_only(
+    file: UploadFile = File(...),
+    preferred_provider: Optional[str] = None,
+    return_raw: bool = False
+):
+    """Parse resume using only LLM (no local fallback)"""
+    if enhanced_parser is None:
+        raise HTTPException(status_code=503, detail="Enhanced parser not initialized")
+    
+    try:
+        # Validate file
+        validate_file_type(file.filename)
+        
+        # Extract text using temporary file
+        file_content = await file.read()
+        
+        # Create temporary file with appropriate extension
+        file_extension = os.path.splitext(file.filename)[1] if file.filename else '.txt'
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as tmp_file:
+            tmp_file.write(file_content)
+            tmp_path = tmp_file.name
+        
+        try:
+            text = extract_text(tmp_path)
+        finally:
+            # Clean up temporary file
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+        
+        if not text or not text.strip():
+            raise HTTPException(status_code=400, detail="No text could be extracted from the file")
+        
+        # Parse with LLM only
+        result = enhanced_parser.parse_resume_llm_only(text, preferred_provider, return_raw)
+        
+        return {
+            "status": "success",
+            "filename": file.filename,
+            "file_size": format_file_size(len(file_content)),
+            "text_length": len(text),
+            **result
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to parse with LLM: {str(e)}")
+
+@app.post("/parse-local-only")
+async def parse_local_only(
+    file: UploadFile = File(...),
+    return_raw: bool = False
+):
+    """Parse resume using only local parser"""
+    if enhanced_parser is None:
+        raise HTTPException(status_code=503, detail="Enhanced parser not initialized")
+    
+    try:
+        # Validate file
+        validate_file_type(file.filename)
+        
+        # Extract text using temporary file
+        file_content = await file.read()
+        
+        # Create temporary file with appropriate extension
+        file_extension = os.path.splitext(file.filename)[1] if file.filename else '.txt'
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as tmp_file:
+            tmp_file.write(file_content)
+            tmp_path = tmp_file.name
+        
+        try:
+            text = extract_text(tmp_path)
+        finally:
+            # Clean up temporary file
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+        
+        if not text or not text.strip():
+            raise HTTPException(status_code=400, detail="No text could be extracted from the file")
+        
+        # Parse with local parser only
+        result = enhanced_parser.parse_resume_local_only(text, return_raw)
+        
+        return {
+            "status": "success",
+            "filename": file.filename,
+            "file_size": format_file_size(len(file_content)),
+            "text_length": len(text),
+            **result
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to parse with local parser: {str(e)}")
 
 # Text Extraction Endpoints
 @app.get("/healthz")
