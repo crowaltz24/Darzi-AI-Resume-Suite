@@ -355,6 +355,20 @@ def resume_generator_interface():
         st.info("👆 Please parse a resume or enter manual data first to generate a new resume.")
         return
     
+    # Add button to clear session data for fresh generation
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if st.button("🔄 Clear Session Data", help="Clear current resume data to start fresh"):
+            if 'parsed_resume' in st.session_state:
+                del st.session_state.parsed_resume
+            if 'generated_latex' in st.session_state:
+                del st.session_state.generated_latex
+            st.success("✅ Session data cleared! Please parse or enter new resume data.")
+            st.rerun()
+    
+    with col2:
+        st.info(f"📊 Current resume: {st.session_state.parsed_resume.get('contact_information', {}).get('full_name', 'Unknown')}")
+    
     # LaTeX Template Input
     st.markdown("#### 📄 LaTeX Template")
     
@@ -436,11 +450,41 @@ def resume_generator_interface():
         key="ats_suggestions"
     )
     
+    # Advanced options
+    with st.expander("⚙️ Advanced Generation Options"):
+        force_fresh = st.checkbox(
+            "Force Fresh Generation",
+            value=False,
+            help="Force a completely new generation (doesn't reuse any cached results)"
+        )
+        
+        include_debug = st.checkbox(
+            "Include Debug Information",
+            value=False,
+            help="Include debugging information in the generated resume"
+        )
+    
     # Generate Resume Button
     if st.button("🎨 Generate LaTeX Resume", key="generate_resume"):
         if not latex_template.strip():
             st.error("❌ Please provide a LaTeX template")
             return
+        
+        # Debug information
+        with st.expander("🔍 Debug: View Data Being Sent"):
+            st.write("**Resume Data:**")
+            st.json(st.session_state.parsed_resume)
+            
+            st.write("**Extra Info:**")
+            extra_info_debug = {}
+            if portfolio:
+                extra_info_debug["portfolio"] = portfolio
+            if certifications:
+                extra_info_debug["certifications"] = certifications
+            st.json(extra_info_debug if extra_info_debug else "None")
+            
+            st.write("**Template Preview (first 500 chars):**")
+            st.code(latex_template[:500] + "..." if len(latex_template) > 500 else latex_template)
         
         with st.spinner("🤖 Generating resume with AI..."):
             try:
@@ -450,6 +494,19 @@ def resume_generator_interface():
                     extra_info["portfolio"] = portfolio
                 if certifications:
                     extra_info["certifications"] = certifications
+                
+                # Add generation timestamp to ensure uniqueness
+                import datetime
+                import random
+                
+                # Add uniqueness factors if forcing fresh generation
+                if force_fresh:
+                    extra_info["generation_timestamp"] = datetime.datetime.now().isoformat()
+                    extra_info["generation_id"] = f"fresh_{random.randint(1000, 9999)}"
+                    extra_info["force_fresh"] = "true"
+                
+                if include_debug:
+                    extra_info["debug_mode"] = "true"
                 
                 # Prepare improvement suggestions
                 suggestions = []
