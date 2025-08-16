@@ -30,6 +30,7 @@ from utils.parser.core import ResumeParser  # Keep for compatibility
 from utils.data_extractor import extract_text
 from utils.data_extractor.utils import validate_file_type, format_file_size
 from utils.ats import ATSScoreAnalyzer
+from utils.resume_generator import generate_resume
 
 # Configuration
 import os
@@ -46,6 +47,15 @@ MAX_FILES_COUNT = 10
 
 class UrlPayload(BaseModel):
     url: AnyHttpUrl
+
+
+class ResumeGenerationRequest(BaseModel):
+    user_resume: Dict[str, Any]  # Parsed resume data
+    resume_template: str  # LaTeX template code
+    extra_info: Optional[Dict[str, str]] = None  # Additional info like LinkedIn, GitHub
+    ats_score: Optional[int] = None  # Current ATS score (0-100)
+    improvement_suggestions: Optional[List[str]] = None  # ATS improvement suggestions
+    preferred_provider: Optional[str] = None  # Preferred LLM provider
 
 
 # Global variables
@@ -769,6 +779,114 @@ async def parse_local_only(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to parse with local parser: {str(e)}")
 
+
+# Resume Generation Endpoint
+@app.post("/generate-resume")
+async def generate_resume_endpoint(request: ResumeGenerationRequest):
+    """
+    Generate LaTeX resume code using LLM based on user data and template.
+    
+    This endpoint takes user resume data, a LaTeX template, and optional ATS feedback
+    to generate a complete resume in LaTeX format.
+    
+    Args:
+        request: ResumeGenerationRequest containing:
+            - user_resume: Parsed resume data (required)
+            - resume_template: LaTeX template code (required) 
+            - extra_info: Additional information like LinkedIn, GitHub (optional)
+            - ats_score: Current ATS score 0-100 (optional)
+            - improvement_suggestions: List of ATS improvement suggestions (optional)
+            - preferred_provider: Preferred LLM provider (optional)
+    
+    Returns:
+        JSON response with:
+            - success: Whether generation was successful
+            - latex_code: Generated LaTeX code
+            - provider_used: LLM provider that was used
+            - metadata: Additional generation metadata
+            - error: Error message if generation failed
+    """
+    try:
+        # Generate resume using the utility function
+        result = generate_resume(
+            user_resume=request.user_resume,
+            resume_template=request.resume_template,
+            extra_info=request.extra_info,
+            ats_score=request.ats_score,
+            improvement_suggestions=request.improvement_suggestions,
+            preferred_provider=request.preferred_provider
+        )
+        
+        if result["success"]:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "success": True,
+                    "latex_code": result["latex_code"],
+                    "provider_used": result["provider_used"],
+                    "metadata": result["metadata"]
+                }
+            )
+        else:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "error": result["error"],
+                    "provider_used": result["provider_used"],
+                    "metadata": result["metadata"]
+                }
+            )
+            
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": f"Resume generation failed: {str(e)}",
+                "provider_used": None,
+                "metadata": {}
+            }
+        )
+
+
+@app.get("/generate-resume/status")
+def get_resume_generation_status():
+    """
+    Check the status of resume generation service.
+    
+    Returns:
+        JSON response with:
+            - available: Whether resume generation is available
+            - providers: List of available LLM providers
+            - service: Service name and status
+    """
+    try:
+        from utils.resume_generator import resume_generator
+        
+        available_providers = resume_generator.get_available_providers()
+        is_available = resume_generator.is_available()
+        
+        return {
+            "available": is_available,
+            "providers": available_providers,
+            "service": "Resume Generator",
+            "status": "operational" if is_available else "no_providers_available"
+        }
+        
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "available": False,
+                "providers": [],
+                "service": "Resume Generator",
+                "status": "error",
+                "error": str(e)
+            }
+        )
+
+
 # Text Extraction Endpoints
 @app.get("/healthz")
 def healthz():
@@ -875,7 +993,7 @@ async def extract_from_url(payload: UrlPayload):
 
 if __name__ == "__main__":
     uvicorn.run(
-        "main:app", 
+        "app:app", 
         host="0.0.0.0", 
         port=7860, 
         reload=True,

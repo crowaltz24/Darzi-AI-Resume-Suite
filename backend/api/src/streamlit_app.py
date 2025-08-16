@@ -7,6 +7,20 @@ import os
 import json
 from typing import Optional, Dict, Any
 
+# Import template manager for resume generation
+try:
+    import sys
+    sys.path.append(os.path.join(os.path.dirname(__file__)))
+    from utils.resume_generator import get_available_templates, get_template, get_template_info
+except ImportError:
+    # Fallback if imports fail
+    def get_available_templates():
+        return ["professional", "modern", "academic", "minimal"]
+    def get_template(name):
+        return None
+    def get_template_info(name):
+        return None
+
 st.set_page_config(
     page_title="Darzi Resume Parser & ATS Analyzer",
     page_icon="📄",
@@ -25,11 +39,13 @@ def main():
     st.sidebar.title("🛠️ Tools")
     tool = st.sidebar.selectbox(
         "Choose a tool:",
-        ["Resume Parser", "ATS Analyzer", "Text Extractor"]
+        ["Resume Parser", "Resume Generator", "ATS Analyzer", "Text Extractor"]
     )
 
     if tool == "Resume Parser":
         resume_parser_interface()
+    elif tool == "Resume Generator":
+        resume_generator_interface()
     elif tool == "ATS Analyzer":
         ats_analyzer_interface()
     elif tool == "Text Extractor":
@@ -179,6 +195,367 @@ def resume_parser_interface():
                         st.error(f"Error: {response.text}")
                 except Exception as e:
                     st.error(f"Error: {str(e)}")
+
+def resume_generator_interface():
+    st.header("🎨 AI Resume Generator")
+    st.markdown("Generate professional LaTeX resumes using AI from your parsed data and custom templates")
+    
+    # Check API status
+    health_data = check_api_status()
+    if health_data:
+        try:
+            # Check resume generation service status
+            generator_response = requests.get(f"{API_BASE_URL}/generate-resume/status", timeout=5)
+            if generator_response.status_code == 200:
+                generator_status = generator_response.json()
+                if generator_status.get('available'):
+                    available_providers = generator_status.get('providers', [])
+                    st.sidebar.success(f"🤖 Resume Generator Available")
+                    st.sidebar.info(f"AI Providers: {', '.join(available_providers)}")
+                    generator_available = True
+                else:
+                    st.sidebar.warning("⚠️ Resume Generator Not Available")
+                    generator_available = False
+            else:
+                st.sidebar.error("❌ Cannot check generator status")
+                generator_available = False
+        except:
+            st.sidebar.error("❌ Cannot connect to generator service")
+            generator_available = False
+    else:
+        st.sidebar.error("❌ API not available")
+        generator_available = False
+    
+    if not generator_available:
+        st.error("❌ Resume generator service is not available. Please ensure the API is running.")
+        return
+    
+    # Create tabs for different input methods
+    tab1, tab2 = st.tabs(["📤 Upload Resume", "✏️ Manual Input"])
+    
+    with tab1:
+        st.subheader("Upload and Parse Resume First")
+        st.markdown("Upload a resume to parse it, then generate a new version using your template")
+        
+        uploaded_file = st.file_uploader(
+            "Choose a PDF resume file",
+            type=["pdf"],
+            help="Upload a resume to parse and use as source data"
+        )
+        
+        if uploaded_file is not None:
+            col1, col2 = st.columns([1, 1])
+            
+            with col1:
+                if st.button("🔍 Parse Resume", key="parse_for_generation"):
+                    with st.spinner("Parsing resume..."):
+                        try:
+                            response = requests.post(
+                                f"{API_BASE_URL}/parse-enhanced",
+                                files={"file": uploaded_file},
+                                params={"use_llm": True, "return_raw": False}
+                            )
+                            
+                            if response.status_code == 200:
+                                parsed_data = response.json()
+                                if parsed_data.get("status") == "success":
+                                    st.session_state.parsed_resume = parsed_data.get("normalized_data", {})
+                                    st.success("✅ Resume parsed successfully!")
+                                    st.json(st.session_state.parsed_resume)
+                                else:
+                                    st.error(f"❌ Parsing failed: {parsed_data.get('error', 'Unknown error')}")
+                            else:
+                                st.error(f"❌ Error: {response.text}")
+                        except Exception as e:
+                            st.error(f"❌ Error: {str(e)}")
+    
+    with tab2:
+        st.subheader("Enter Resume Data Manually")
+        
+        # Basic Information
+        st.markdown("#### 👤 Personal Information")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            full_name = st.text_input("Full Name", key="manual_name")
+            email = st.text_input("Email", key="manual_email")
+            phone = st.text_input("Phone", key="manual_phone")
+        
+        with col2:
+            location = st.text_input("Location", key="manual_location")
+            linkedin = st.text_input("LinkedIn (optional)", key="manual_linkedin")
+            github = st.text_input("GitHub (optional)", key="manual_github")
+        
+        # Professional Summary
+        st.markdown("#### 📝 Professional Summary")
+        professional_summary = st.text_area(
+            "Professional Summary",
+            height=100,
+            key="manual_summary",
+            help="Write a brief summary of your professional background"
+        )
+        
+        # Work Experience
+        st.markdown("#### 💼 Work Experience")
+        work_experience = st.text_area(
+            "Work Experience (JSON format or description)",
+            height=150,
+            key="manual_experience",
+            help="Either paste JSON format experience or describe your work experience"
+        )
+        
+        # Education
+        st.markdown("#### 🎓 Education")
+        education = st.text_area(
+            "Education",
+            height=100,
+            key="manual_education",
+            help="Describe your educational background"
+        )
+        
+        # Skills
+        st.markdown("#### 🛠️ Skills")
+        skills = st.text_area(
+            "Skills (comma-separated or JSON)",
+            height=100,
+            key="manual_skills",
+            help="List your skills, separated by commas or in JSON format"
+        )
+        
+        if st.button("💾 Save Manual Data", key="save_manual"):
+            # Create resume data structure
+            manual_resume_data = {
+                "contact_information": {
+                    "full_name": full_name,
+                    "email": email,
+                    "phone": phone,
+                    "location": location,
+                    "linkedin": linkedin if linkedin else None,
+                    "github": github if github else None
+                },
+                "professional_summary": professional_summary,
+                "work_experience": work_experience,
+                "education": education,
+                "skills": skills
+            }
+            
+            st.session_state.parsed_resume = manual_resume_data
+            st.success("✅ Manual data saved successfully!")
+            st.json(manual_resume_data)
+    
+    # Resume Generation Section
+    st.markdown("---")
+    st.subheader("🎨 Generate Resume")
+    
+    if 'parsed_resume' not in st.session_state:
+        st.info("👆 Please parse a resume or enter manual data first to generate a new resume.")
+        return
+    
+    # LaTeX Template Input
+    st.markdown("#### 📄 LaTeX Template")
+    
+    # Get available templates from TemplateManager
+    try:
+        available_templates = get_available_templates()
+        template_options = ["Custom Template"] + [f"{name.title()} Template" for name in available_templates]
+    except:
+        # Fallback options if template manager fails
+        template_options = ["Custom Template", "Professional Template", "Modern Template", "Academic Template", "Minimal Template"]
+        available_templates = ["professional", "modern", "academic", "minimal"]
+    
+    template_option = st.selectbox(
+        "Choose a template:",
+        template_options
+    )
+    
+    if template_option == "Custom Template":
+        latex_template = st.text_area(
+            "LaTeX Template Code",
+            height=300,
+            help="Paste your custom LaTeX template. Use placeholders like [FULL_NAME], [EMAIL], etc.",
+            key="custom_template"
+        )
+    else:
+        # Extract template name from option (remove " Template" suffix)
+        template_name = template_option.lower().replace(" template", "")
+        
+        # Get template content from TemplateManager
+        try:
+            latex_template = get_template(template_name)
+            template_info = get_template_info(template_name)
+            
+            if latex_template:
+                # Show template info if available
+                if template_info:
+                    with st.expander(f"ℹ️ About {template_option}"):
+                        st.write(f"**Description:** {template_info.get('description', 'N/A')}")
+                        st.write(f"**Features:** {template_info.get('features', 'N/A')}")
+                        st.write(f"**Best for:** {template_info.get('best_for', 'N/A')}")
+                
+                # Display template code
+                st.code(latex_template, language="latex")
+                st.info(f"Using {template_option} - you can modify it below if needed")
+                
+                # Allow editing of the template
+                latex_template = st.text_area(
+                    "Edit Template (Optional)",
+                    value=latex_template,
+                    height=200,
+                    help="You can modify the template if needed",
+                    key=f"edit_{template_name}"
+                )
+            else:
+                st.error(f"❌ Could not load {template_option}")
+                latex_template = ""
+                
+        except Exception as e:
+            st.error(f"❌ Error loading template: {str(e)}")
+            latex_template = ""
+    
+    # Additional Information
+    st.markdown("#### ➕ Additional Information (Optional)")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        portfolio = st.text_input("Portfolio URL", key="portfolio")
+        certifications = st.text_input("Certifications", key="certifications")
+    
+    with col2:
+        ats_score = st.number_input("Current ATS Score (0-100)", min_value=0, max_value=100, value=None, key="ats_score")
+        preferred_provider = st.selectbox("Preferred AI Provider", ["Auto"] + available_providers, key="provider")
+    
+    # ATS Improvement Suggestions
+    ats_suggestions = st.text_area(
+        "ATS Improvement Suggestions (one per line)",
+        height=100,
+        help="Enter improvement suggestions, one per line",
+        key="ats_suggestions"
+    )
+    
+    # Generate Resume Button
+    if st.button("🎨 Generate LaTeX Resume", key="generate_resume"):
+        if not latex_template.strip():
+            st.error("❌ Please provide a LaTeX template")
+            return
+        
+        with st.spinner("🤖 Generating resume with AI..."):
+            try:
+                # Prepare extra info
+                extra_info = {}
+                if portfolio:
+                    extra_info["portfolio"] = portfolio
+                if certifications:
+                    extra_info["certifications"] = certifications
+                
+                # Prepare improvement suggestions
+                suggestions = []
+                if ats_suggestions.strip():
+                    suggestions = [s.strip() for s in ats_suggestions.split('\n') if s.strip()]
+                
+                # Prepare request payload
+                payload = {
+                    "user_resume": st.session_state.parsed_resume,
+                    "resume_template": latex_template,
+                    "extra_info": extra_info if extra_info else None,
+                    "ats_score": ats_score if ats_score is not None else None,
+                    "improvement_suggestions": suggestions if suggestions else None,
+                    "preferred_provider": preferred_provider if preferred_provider != "Auto" else None
+                }
+                
+                # Make API request
+                response = requests.post(
+                    f"{API_BASE_URL}/generate-resume",
+                    json=payload,
+                    timeout=60
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    
+                    if result.get("success"):
+                        st.success("✅ Resume generated successfully!")
+                        
+                        # Display metadata
+                        metadata = result.get("metadata", {})
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            st.metric("AI Provider", result.get("provider_used", "Unknown"))
+                        with col2:
+                            st.metric("Prompt Length", f"{metadata.get('prompt_length', 0):,} chars")
+                        with col3:
+                            st.metric("Response Length", f"{metadata.get('response_length', 0):,} chars")
+                        
+                        # Display LaTeX code
+                        latex_code = result.get("latex_code", "")
+                        
+                        st.subheader("📄 Generated LaTeX Resume")
+                        st.code(latex_code, language="latex")
+                        
+                        # Download button
+                        st.download_button(
+                            label="📥 Download LaTeX File",
+                            data=latex_code,
+                            file_name="generated_resume.tex",
+                            mime="text/plain",
+                            help="Download the generated LaTeX file to compile with LaTeX"
+                        )
+                        
+                        # Instructions for compiling
+                        with st.expander("📝 How to compile LaTeX to PDF"):
+                            st.markdown("""
+                            **To compile your LaTeX resume to PDF:**
+                            
+                            1. **Online Compilers (Easiest):**
+                               - Upload to [Overleaf](https://www.overleaf.com/)
+                               - Use [LaTeX Base](https://latexbase.com/)
+                            
+                            2. **Local Installation:**
+                               - Install [TeX Live](https://www.tug.org/texlive/) (Windows/Linux) or [MacTeX](https://www.tug.org/mactex/) (macOS)
+                               - Run: `pdflatex generated_resume.tex`
+                            
+                            3. **VS Code Extension:**
+                               - Install "LaTeX Workshop" extension
+                               - Open the .tex file and compile
+                            """)
+                        
+                        # Save to session state for potential edits
+                        st.session_state.generated_latex = latex_code
+                        
+                    else:
+                        st.error(f"❌ Resume generation failed: {result.get('error', 'Unknown error')}")
+                
+                else:
+                    st.error(f"❌ API Error: {response.text}")
+                    
+            except Exception as e:
+                st.error(f"❌ Error: {str(e)}")
+    
+    # Optional: Edit Generated LaTeX
+    if 'generated_latex' in st.session_state:
+        st.markdown("---")
+        st.subheader("✏️ Edit Generated LaTeX")
+        
+        edited_latex = st.text_area(
+            "Edit LaTeX Code",
+            value=st.session_state.generated_latex,
+            height=400,
+            key="edit_latex"
+        )
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("💾 Save Changes", key="save_changes"):
+                st.session_state.generated_latex = edited_latex
+                st.success("✅ Changes saved!")
+        
+        with col2:
+            st.download_button(
+                label="📥 Download Edited Version",
+                data=edited_latex,
+                file_name="edited_resume.tex",
+                mime="text/plain"
+            )
 
 def ats_analyzer_interface():
     st.header("📊 AI-Powered ATS Analyzer")

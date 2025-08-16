@@ -279,6 +279,74 @@ Analyze the resume text and extract ALL information into a flexible JSON structu
         
         raise RuntimeError("All LLM providers failed to parse the resume")
     
+    def generate_text(self, prompt: str, preferred_provider: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Generate text using LLM with fallback support
+        
+        Args:
+            prompt: Text prompt for the LLM
+            preferred_provider: Name of preferred provider (optional)
+            
+        Returns:
+            Dict containing:
+                - success: Whether generation was successful
+                - content: Generated text content
+                - provider_used: Name of provider that was used
+                - error: Error message if generation failed
+        """
+        if not self.providers:
+            return {
+                "success": False,
+                "content": None,
+                "provider_used": None,
+                "error": "No LLM providers available"
+            }
+        
+        # Determine provider order
+        providers_to_try = []
+        
+        if preferred_provider:
+            # Try preferred provider first
+            for provider in self.providers:
+                if provider.get_provider_name().lower() == preferred_provider.lower():
+                    providers_to_try.append(provider)
+                    break
+            # Add other providers as fallback
+            providers_to_try.extend([p for p in self.providers if p not in providers_to_try])
+        else:
+            # Use default order (primary first)
+            providers_to_try = self.providers.copy()
+        
+        # Try each provider
+        for provider in providers_to_try:
+            try:
+                logger.info(f"Attempting text generation with provider: {provider.get_provider_name()}")
+                
+                response = provider.generate_text(prompt)
+                
+                if response:
+                    logger.info(f"Text generation successful with provider: {provider.get_provider_name()}")
+                    return {
+                        "success": True,
+                        "content": response,
+                        "provider_used": provider.get_provider_name(),
+                        "error": None
+                    }
+                else:
+                    logger.warning(f"Provider {provider.get_provider_name()} returned empty response")
+                    continue
+                    
+            except Exception as e:
+                logger.error(f"Provider {provider.get_provider_name()} failed: {e}")
+                continue
+        
+        return {
+            "success": False,
+            "content": None,
+            "provider_used": None,
+            "error": "All LLM providers failed to generate text"
+        }
+    
     def get_primary_provider_name(self) -> Optional[str]:
         """Get the name of the primary provider"""
         return self.primary_provider.get_provider_name() if self.primary_provider else None
