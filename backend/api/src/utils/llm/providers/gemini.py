@@ -21,10 +21,17 @@ class GeminiProvider(BaseLLMProvider):
     def _initialize(self):
         """Initialize the Gemini model"""
         try:
-            api_key = os.getenv('GOOGLE_API_KEY')
+            # Try GOOGLE_API_KEY first (standard for Gemini), then GEMINI_API_KEY as fallback
+            api_key = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
+            
             if not api_key:
-                logger.warning("GOOGLE_API_KEY not found in environment variables")
+                logger.warning("Gemini API key not found. Please set either GOOGLE_API_KEY or GEMINI_API_KEY environment variable")
+                logger.info("Note: For HuggingFace Spaces, add your API key in the Settings > Repository secrets")
                 return
+            
+            # Log which key was used (without exposing the actual key)
+            key_source = "GOOGLE_API_KEY" if os.getenv('GOOGLE_API_KEY') else "GEMINI_API_KEY"
+            logger.debug(f"Using API key from: {key_source}")
             
             genai.configure(api_key=api_key)
             self.model = genai.GenerativeModel('gemini-1.5-flash')

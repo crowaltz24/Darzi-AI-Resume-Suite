@@ -6,6 +6,10 @@ import tempfile
 import os
 import json
 from typing import Optional, Dict, Any
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Import template manager for resume generation
 try:

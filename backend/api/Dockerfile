@@ -29,12 +29,16 @@ COPY requirements.txt pyproject.toml uv.lock* ./
 # Install Python dependencies
 RUN uv pip install --no-cache -r requirements.txt
 
-# Install spaCy language model
-RUN python -m spacy download en_core_web_sm --quiet
+# Install spaCy language model with fallback approach
+RUN /code/.venv/bin/python -m spacy download en_core_web_sm --quiet || \
+    uv pip install https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 
-# Copy source code
+# Copy source code and startup script
 COPY src/ ./src/
-COPY main.py ./
+COPY main.py startup.sh ./
+
+# Make startup script executable
+RUN chmod +x startup.sh
 
 # Install project in development mode
 RUN uv pip install -e . --no-deps
@@ -59,5 +63,5 @@ EXPOSE $PORT
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD python -c "import requests; import os; requests.get(f'http://localhost:{os.getenv(\"PORT\", \"7860\")}/health', timeout=5).raise_for_status()" || exit 1
 
-# Optimized startup command with graceful degradation
-CMD ["sh", "-c", "if [ \"$APP_MODE\" = \"ui\" ]; then streamlit run src/streamlit_app.py --server.port=${PORT} --server.address=0.0.0.0 --server.headless=true --server.enableCORS=false --server.enableXsrfProtection=false; else uvicorn main:app --host 0.0.0.0 --port ${PORT} --workers 1 --timeout-keep-alive 30; fi"]
+# Optimized startup command with pre-setup
+CMD ["sh", "-c", "./startup.sh && if [ \"$APP_MODE\" = \"ui\" ]; then streamlit run src/streamlit_app.py --server.port=${PORT} --server.address=0.0.0.0 --server.headless=true --server.enableCORS=false --server.enableXsrfProtection=false; else uvicorn main:app --host 0.0.0.0 --port ${PORT} --workers 1 --timeout-keep-alive 30; fi"]
