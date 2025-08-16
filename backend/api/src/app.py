@@ -29,6 +29,7 @@ from utils.parser.enhanced import EnhancedResumeParser
 from utils.parser.core import ResumeParser  # Keep for compatibility
 from utils.data_extractor import extract_text
 from utils.data_extractor.utils import validate_file_type, format_file_size
+from utils.ats import ATSScoreAnalyzer
 
 # Configuration
 import os
@@ -51,6 +52,7 @@ class UrlPayload(BaseModel):
 client: Optional[Client] = None
 enhanced_parser: Optional[EnhancedResumeParser] = None
 resume_parser: Optional[ResumeParser] = None  # Keep for compatibility
+ats_analyzer: Optional[ATSScoreAnalyzer] = None
 
 #standard JSON schema for all parsers
 RESUME_SCHEMA = {
@@ -69,7 +71,7 @@ RESUME_SCHEMA = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global client, enhanced_parser, resume_parser
+    global client, enhanced_parser, resume_parser, ats_analyzer
     
     print("Starting Darzi Resume Parser API...") #starter
     
@@ -81,10 +83,15 @@ async def lifespan(app: FastAPI):
         # Also initialize local parser for compatibility
         resume_parser = ResumeParser()
         print("Local parser initialized")
+        
+        # Initialize ATS analyzer
+        ats_analyzer = ATSScoreAnalyzer()
+        print("ATS analyzer initialized")
     except Exception as e:
         print(f"Parser initialization failed: {e}")
         enhanced_parser = None
         resume_parser = None
+        ats_analyzer = None
     
     #initialize MCP client
     try:
@@ -250,6 +257,8 @@ async def root():
         "services": {
             "local_parser": "available" if resume_parser else "unavailable",
             "mcp_ai_parser": "available" if client else "unavailable",
+            "enhanced_parser": "available" if enhanced_parser else "unavailable",
+            "ats_analyzer": "available" if ats_analyzer else "unavailable",
             "text_extraction": "available",
             "google_vision_api": "available" if os.getenv("GOOGLE_API_KEY") else "configure_required"
         },
@@ -257,9 +266,15 @@ async def root():
             "health": "/health",
             "parse_text": "/parse",
             "parse_pdf": "/parse-pdf",
+            "parse_enhanced": "/parse-enhanced",
+            "parse_llm_only": "/parse-llm-only", 
+            "parse_local_only": "/parse-local-only",
             "extract_text": "/api/extract",
             "extract_url": "/api/extract-url",
             "optimize_ats": "/optimize-ats",
+            "analyze_ats": "/analyze-ats",
+            "parser_status": "/parser-status",
+            "ats_status": "/ats-status",
             "mcp_status": "/mcp-status",
             "docs": "/docs"
         },
@@ -299,13 +314,17 @@ async def health_check():
         "components": {
             "api": "healthy",
             "local_parser": "healthy" if resume_parser else "unhealthy",
+            "enhanced_parser": "healthy" if enhanced_parser else "unhealthy",
+            "ats_analyzer": "healthy" if ats_analyzer else "unhealthy",
             "mcp_client": "healthy" if client else "unhealthy"
         },
         "capabilities": {
             "text_parsing": bool(resume_parser or client),
             "pdf_parsing": bool(resume_parser),
             "ai_enhancement": bool(client),
-            "hybrid_parsing": bool(resume_parser and client)
+            "hybrid_parsing": bool(resume_parser and client),
+            "llm_parsing": bool(enhanced_parser and enhanced_parser.llm_manager.is_llm_available()) if enhanced_parser else False,
+            "ats_analysis": bool(ats_analyzer)
         }
     }
 
@@ -464,42 +483,46 @@ async def parse_resume_pdf(file: UploadFile = File(...)):       #Parse resume fr
 
 @app.post("/optimize-ats")
 async def optimize_for_ats(request: Request):
+    """Enhanced ATS optimization using LLM-powered analysis"""
+    if not ats_analyzer:
+        raise HTTPException(status_code=503, detail="ATS analyzer not available")
+    
     try:
         body = await request.json()
         resume_text = body.get('resume_text', '')
         job_description = body.get('job_description', '')
+        preferred_provider = body.get('preferred_provider')
         
         if not resume_text:
             raise HTTPException(status_code=400, detail="resume_text is required")
         
-        try:
-            if resume_parser and client:
-                local_result = await parse_with_local(resume_text)
-                mcp_result = await parse_with_mcp(resume_text)
-                parsed_resume = merge_parsing_results(local_result, mcp_result)
-            elif client:
-                parsed_resume = await parse_with_mcp(resume_text)
-            elif resume_parser:
-                parsed_resume = await parse_with_local(resume_text)
-            else:
-                raise HTTPException(status_code=503, detail="No parsing service available")
+        if not job_description:
+            raise HTTPException(status_code=400, detail="job_description is required")
         
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to parse resume: {str(e)}")
-        
-        ats_suggestions = analyze_ats_compatibility(parsed_resume, job_description)
+        # Get comprehensive ATS analysis using LLM
+        ats_analysis = ats_analyzer.analyze_ats_score(
+            resume_text, 
+            job_description,
+            preferred_provider
+        )
         
         return {
             "success": True,
             "data": {
-                "parsed_resume": parsed_resume,
-                "ats_score": ats_suggestions["score"],
-                "suggestions": ats_suggestions["suggestions"],
-                "optimized_sections": ats_suggestions["optimized_sections"]
+                "ats_analysis": ats_analysis,
+                "overall_score": ats_analysis.get('overall_score', 0),
+                "predicted_pass_rate": ats_analysis.get('predicted_ats_pass_rate', 0),
+                "summary": ats_analysis.get('summary', ''),
+                "improvement_priority": ats_analysis.get('improvement_priority', {}),
+                "optimization_tips": ats_analysis.get('ats_optimization_tips', [])
             },
             "metadata": {
-                "optimization_method": "rule_based",
-                "job_description_provided": bool(job_description)
+                "analysis_method": ats_analysis.get('analysis_method', 'unknown'),
+                "provider_used": ats_analysis.get('provider_used', 'unknown'),
+                "confidence_score": ats_analysis.get('confidence_score', 0.0),
+                "analysis_timestamp": ats_analysis.get('analysis_timestamp'),
+                "resume_length": len(resume_text),
+                "job_description_length": len(job_description)
             }
         }
         
@@ -508,195 +531,63 @@ async def optimize_for_ats(request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ATS optimization failed: {str(e)}")
 
-def analyze_ats_compatibility(resume_data: Dict[str, Any], job_description: str = "") -> Dict[str, Any]:
-    score = 0
-    max_score = 100
-    suggestions = []
-    optimized_sections = {}
-    
-    #check basic information completeness (20 points)
-    if resume_data.get('name'):
-        score += 5
-    else:
-        suggestions.append("Add your full name at the top of the resume")
-    
-    if resume_data.get('email'):
-        score += 5
-    else:
-        suggestions.append("Include a professional email address")
-    
-    if resume_data.get('mobile_number'):
-        score += 5
-    else:
-        suggestions.append("Add your phone number")
-    
-    if resume_data.get('skills'):
-        score += 5
-    else:
-        suggestions.append("Include a skills section with relevant technical and soft skills")
-    
-    #check skills section quality (25 points)
-    skills = resume_data.get('skills', [])
-    if len(skills) >= 5:
-        score += 10
-        if len(skills) >= 10:
-            score += 5
-    else:
-        suggestions.append("Add more skills (aim for 10-15 relevant skills)")
-    
-    #check for technical skills
-    technical_keywords = ['python', 'java', 'javascript', 'sql', 'html', 'css', 'react', 'node', 'aws', 'docker']
-    tech_skills_found = [skill for skill in skills if any(tech.lower() in skill.lower() for tech in technical_keywords)]
-    if tech_skills_found:
-        score += 10
-    else:
-        suggestions.append("Include more technical skills relevant to your field")
-    
-    #check experience section (25 points)
-    experience = resume_data.get('experience', [])
-    if experience:
-        score += 10
-        if len(experience) >= 2:
-            score += 5
-        
-        #check for quantified achievements
-        exp_text = str(experience).lower()
-        if any(indicator in exp_text for indicator in ['%', '$', 'increased', 'decreased', 'improved', 'reduced']):
-            score += 10
-        else:
-            suggestions.append("Add quantified achievements to your experience (e.g., 'Increased efficiency by 20%')")
-    else:
-        suggestions.append("Include work experience with specific achievements")
-    
-    #check education section (15 points)
-    education = resume_data.get('education', [])
-    if education:
-        score += 15
-    else:
-        suggestions.append("Add your educational background")
-    
-    #check summary/objective (15 points)
-    summary = resume_data.get('summary', '')
-    if summary and len(summary) > 50:
-        score += 15
-    else:
-        suggestions.append("Add a professional summary (2-3 sentences highlighting your key strengths)")
-    
-    #job description keyword matching (if provided)
-    if job_description:
-        keyword_analysis = analyze_keywords_match(resume_data, job_description)
-        optimized_sections['keywords'] = keyword_analysis
-        
-        if keyword_analysis['match_percentage'] >= 70:
-            score += 0  #already good ig
-        elif keyword_analysis['match_percentage'] >= 50:
-            suggestions.append(f"Consider adding these missing keywords: {', '.join(keyword_analysis['missing_keywords'][:5])}")
-        else:
-            suggestions.append("Significantly improve keyword matching with the job description")
-    
-    #ATS-friendly formatting suggestions
-    formatting_suggestions = []
-    
-    resume_text_lower = resume_data.get('raw_text', '').lower()
-    standard_sections = ['experience', 'education', 'skills', 'summary']
-    missing_sections = [section for section in standard_sections if section not in resume_text_lower]
-    
-    if missing_sections:
-        formatting_suggestions.append(f"Use standard section headers: {', '.join(missing_sections)}")
-    
-    formatting_suggestions.extend([
-        "Use simple, clean formatting without graphics or unusual fonts",
-        "Avoid tables, text boxes, and columns",
-        "Use bullet points for achievements and responsibilities",
-        "Save as PDF to preserve formatting",
-        "Use standard fonts like Arial, Calibri, or Times New Roman"
-    ])
-    
-    optimized_sections['formatting'] = formatting_suggestions
-    
-    final_score = min(score, max_score)
-    
-    #score based sugesstion
-    if final_score < 50:
-        suggestions.insert(0, "Your resume needs significant improvement for ATS compatibility")
-    elif final_score < 70:
-        suggestions.insert(0, "Your resume is moderately ATS-friendly but has room for improvement")
-    elif final_score < 85:
-        suggestions.insert(0, "Your resume is well-optimized for ATS with minor improvements needed")
-    else:
-        suggestions.insert(0, "Excellent! Your resume is highly optimized for ATS systems")
-    
-    return {
-        "score": final_score,
-        "max_score": max_score,
-        "suggestions": suggestions[:10],  # Limit to top 10 suggestions
-        "optimized_sections": optimized_sections
-    }
-
-def analyze_keywords_match(resume_data: Dict[str, Any], job_description: str) -> Dict[str, Any]:
-    job_keywords = extract_job_keywords(job_description)
-    
-    resume_text = ' '.join([
-        resume_data.get('summary', ''),
-        ' '.join(resume_data.get('skills', [])),
-        str(resume_data.get('experience', [])),
-        str(resume_data.get('education', []))
-    ]).lower()
-    
-    matching_keywords = []
-    missing_keywords = []
-    
-    for keyword in job_keywords:
-        if keyword.lower() in resume_text:
-            matching_keywords.append(keyword)
-        else:
-            missing_keywords.append(keyword)
-    
-    match_percentage = (len(matching_keywords) / len(job_keywords) * 100) if job_keywords else 0
-    
-    return {
-        "job_keywords": job_keywords,
-        "matching_keywords": matching_keywords,
-        "missing_keywords": missing_keywords,
-        "match_percentage": round(match_percentage, 1),
-        "total_keywords": len(job_keywords)
-    }
-
-def extract_job_keywords(job_description: str) -> List[str]:          
-    keyword_patterns = [
-        #programming languages
-        'python', 'java', 'javascript', 'typescript', 'c++', 'c#', 'php', 'ruby', 'go', 'rust',
-        #web techn..
-        'html', 'css', 'react', 'angular', 'vue', 'node.js', 'express', 'django', 'flask',
-        #databases
-        'sql', 'mysql', 'postgresql', 'mongodb', 'redis', 'sqlite',
-        #cloud & DevOps
-        'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'jenkins', 'terraform', 'ansible',
-        #data & AI
-        'machine learning', 'data science', 'tensorflow', 'pytorch', 'pandas', 'numpy',
-        #tools
-        'git', 'jira', 'confluence', 'agile', 'scrum', 'ci/cd',
-        #soft skills
-        'leadership', 'communication', 'teamwork', 'problem solving', 'analytical'
-    ]
-    
-    found_keywords = []
-    job_text_lower = job_description.lower()
-    
-    for keyword in keyword_patterns:
-        if keyword in job_text_lower:
-            found_keywords.append(keyword)
-    
-    import re
-    capitalized_words = re.findall(r'\b[A-Z][a-zA-Z]+\b', job_description)
-    technical_caps = [word for word in capitalized_words if len(word) > 3 and word not in ['The', 'And', 'For', 'With']]
-    
-    found_keywords.extend(technical_caps[:10])  #limit to 10 additional terms
-    
-    return list(set(found_keywords))  #for removing duplicates
-
 
 # Enhanced Parser Endpoints with LLM Integration
+@app.get("/ats-status")
+def get_ats_status():
+    """Get status of the ATS analyzer"""
+    if ats_analyzer is None:
+        raise HTTPException(status_code=503, detail="ATS analyzer not initialized")
+    
+    try:
+        status = ats_analyzer.get_analyzer_status()
+        return {
+            "status": "ok",
+            **status
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get ATS status: {str(e)}")
+
+@app.post("/analyze-ats")
+async def analyze_ats_score(request: Request):
+    """Dedicated ATS analysis endpoint with detailed scoring"""
+    if not ats_analyzer:
+        raise HTTPException(status_code=503, detail="ATS analyzer not available")
+    
+    try:
+        body = await request.json()
+        resume_text = body.get('resume_text', '')
+        job_description = body.get('job_description', '')
+        preferred_provider = body.get('preferred_provider')
+        
+        if not resume_text:
+            raise HTTPException(status_code=400, detail="resume_text is required")
+        
+        if not job_description:
+            raise HTTPException(status_code=400, detail="job_description is required")
+        
+        # Perform detailed ATS analysis
+        analysis = ats_analyzer.analyze_ats_score(
+            resume_text, 
+            job_description,
+            preferred_provider
+        )
+        
+        return {
+            "success": True,
+            "analysis": analysis,
+            "metadata": {
+                "resume_length": len(resume_text),
+                "job_description_length": len(job_description),
+                "analysis_timestamp": analysis.get('analysis_timestamp')
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ATS analysis failed: {str(e)}")
+
 @app.get("/parser-status")
 def get_parser_status():
     """Get status of all available parsers (local and LLM)"""
