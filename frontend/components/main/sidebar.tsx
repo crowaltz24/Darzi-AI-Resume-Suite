@@ -3,6 +3,7 @@ import { Logo } from "@/components/logo";
 import {
   Home,
   FileText,
+  FilePlus2,
   // User,
   // Settings,
   HelpCircle,
@@ -136,10 +137,13 @@ export default function Sidebar({
             <NavItem icon={<FileText />} href="/resume-editor" active={pathname === '/resume-editor'} isCollapsed={isCollapsed}>
               Resume Editor
             </NavItem>
-            <DisabledNavItem icon={<Target />} label="ATS Checker" isCollapsed={isCollapsed} />
+            <NavItem icon={<FilePlus2 />} href="/generate-resume" active={pathname === '/generate-resume'} isCollapsed={isCollapsed}>
+              Generate Resume
+            </NavItem>
             <NavItem icon={<BarChart3 />} href="/templates" active={pathname === '/templates'} isCollapsed={isCollapsed}>
               Templates
             </NavItem>
+            <DisabledNavItem icon={<Target />} label="ATS Checker" isCollapsed={isCollapsed} />
             {/* Account section - always stays below main nav item
             <div className="mt-6">
               {!isCollapsed && (
