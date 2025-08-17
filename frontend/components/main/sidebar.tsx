@@ -130,7 +130,7 @@ export default function Sidebar({
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           <nav className="space-y-2">
 
-            <NavItem icon={<Home />} href="/Dashboard" active={pathname === '/Dashboard'} isCollapsed={isCollapsed}>
+            <NavItem icon={<Home />} href="/dashboard" active={pathname === '/dashboard'} isCollapsed={isCollapsed}>
               Dashboard
             </NavItem>
             <NavItem icon={<FileText />} href="/resume-editor" active={pathname === '/resume-editor'} isCollapsed={isCollapsed}>
@@ -147,10 +147,10 @@ export default function Sidebar({
                   Account
                 </p>
               )}
-              <NavItem icon={<User />} href="/Dashboard" isCollapsed={isCollapsed}>
+              <NavItem icon={<User />} href="/dashboard" isCollapsed={isCollapsed}>
                 Profile
               </NavItem>
-              <NavItem icon={<Settings />} href="/Dashboard" isCollapsed={isCollapsed}>
+              <NavItem icon={<Settings />} href="/dashboard" isCollapsed={isCollapsed}>
                 Settings
               </NavItem> */}
           </nav>
