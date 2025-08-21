@@ -3,6 +3,7 @@ import { Logo } from "@/components/logo";
 import {
   Home,
   FileText,
+  FilePlus2,
   // User,
   // Settings,
   HelpCircle,
@@ -130,16 +131,19 @@ export default function Sidebar({
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           <nav className="space-y-2">
 
-            <NavItem icon={<Home />} href="/Dashboard" active={pathname === '/Dashboard'} isCollapsed={isCollapsed}>
+            <NavItem icon={<Home />} href="/dashboard" active={pathname === '/dashboard'} isCollapsed={isCollapsed}>
               Dashboard
             </NavItem>
             <NavItem icon={<FileText />} href="/resume-editor" active={pathname === '/resume-editor'} isCollapsed={isCollapsed}>
               Resume Editor
             </NavItem>
-            <DisabledNavItem icon={<Target />} label="ATS Checker" isCollapsed={isCollapsed} />
+            <NavItem icon={<FilePlus2 />} href="/generate-resume" active={pathname === '/generate-resume'} isCollapsed={isCollapsed}>
+              Generate Resume
+            </NavItem>
             <NavItem icon={<BarChart3 />} href="/templates" active={pathname === '/templates'} isCollapsed={isCollapsed}>
               Templates
             </NavItem>
+            <DisabledNavItem icon={<Target />} label="ATS Checker" isCollapsed={isCollapsed} />
             {/* Account section - always stays below main nav item
             <div className="mt-6">
               {!isCollapsed && (
@@ -147,10 +151,10 @@ export default function Sidebar({
                   Account
                 </p>
               )}
-              <NavItem icon={<User />} href="/Dashboard" isCollapsed={isCollapsed}>
+              <NavItem icon={<User />} href="/dashboard" isCollapsed={isCollapsed}>
                 Profile
               </NavItem>
-              <NavItem icon={<Settings />} href="/Dashboard" isCollapsed={isCollapsed}>
+              <NavItem icon={<Settings />} href="/dashboard" isCollapsed={isCollapsed}>
                 Settings
               </NavItem> */}
           </nav>

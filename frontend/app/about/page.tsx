@@ -294,7 +294,7 @@ export default function AboutPage() {
                             </p>
                             <div className="mt-10 flex items-center justify-center gap-x-6">
                                 <Button size="lg" asChild className="group">
-                                    <Link href="/Dashboard">
+                                    <Link href="/dashboard">
                                         Try the Resume Builder
                                         <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
                                     </Link>
